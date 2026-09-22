@@ -90,7 +90,7 @@ class JevClient:
                 reraise=True,
             ):
                 with attempt:
-                    async with httpx.AsyncClient(timeout=self.timeout) as client:
+                    async with httpx.AsyncClient(timeout=self.timeout, trust_env=False) as client:
                         resp = await client.post(url, json=body, headers=headers)
                     if resp.status_code in (429, 529):
                         raise _RetryableStatus(resp.status_code)
@@ -111,7 +111,7 @@ class JevClient:
         url = f"{self.base_url}{MODELS_PATH}"
         headers = {"Authorization": f"Bearer {self.api_key}"}
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(timeout=10.0, trust_env=False) as client:
                 resp = await client.get(url, headers=headers)
             return 200 <= resp.status_code < 300
         except httpx.HTTPError:
