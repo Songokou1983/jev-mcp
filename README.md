@@ -21,7 +21,7 @@ laptop (Claude Code) ──Tailscale──► desktop (jev-mcp) ──HTTPS─�
 | 端 | 配置 |
 |---|---|
 | **Desktop** (server) | PM2 跑，绑 `tailscale ip -4`（如 `100.x.y.z:8765`），`--transport http` |
-| **Laptop** (client) | `~/.claude/settings.json` 加 `mcpServers` 段，`type: "http"`，`url: "http://<desktop-ip>:8765/mcp"` |
+| **Laptop** (client) | `claude mcp add --transport http jev http://<desktop-ip>:8765/mcp --header "Authorization: Bearer <token>"`（写 `~/.claude.json`，**不**改 `~/.claude/settings.json`）|
 | **同机** (开发) | server 支持 `--transport stdio`，laptop 用 `command:` 启动 |
 
 ## 快速开始（Phase 2 完成 + 你拍板后）
@@ -49,34 +49,26 @@ pm2 logs jev-mcp
 
 ### Laptop
 
-`~/.claude/settings.json` env 段加：
+> ⚠️ **2026-09-22 update**: VSCode extension **does not read** `~/.claude/settings.json.mcpServers`. Use `claude mcp add` (writes to `~/.claude.json`, which both CLI and VSCode ext read).
 
-```json
-{
-  "env": {
-    "JEV_MCP_TOKEN": "<paste same token from desktop>"
-  },
-  "mcpServers": {
-    "jev": {
-      "type": "http",
-      "url": "http://<desktop-tailscale-ip>:8765/mcp",
-      "headers": { "Authorization": "Bearer ${env:JEV_MCP_TOKEN}" }
-    }
-  }
-}
+```bash
+# 同步 token 从 server: cat ~/.jev/token, 然后 paste
+claude mcp add --transport http jev http://<desktop-tailscale-ip>:8765/mcp \
+  --header "Authorization: Bearer <paste-token-here>"
+
+# 验证
+claude mcp list   # 应看到 jev
+
+# 重启 VSCode 窗口（Command Palette → "Reload Window"）才能让 mcp__jev__* 出现
 ```
 
 ### 同机开发（laptop=desktop）
 
-```json
-{
-  "mcpServers": {
-    "jev-local": {
-      "command": "/home/son_goku/jev-mcp/.venv/bin/python",
-      "args": ["/home/son_goku/jev-mcp/src/server.py", "--transport", "stdio"]
-    }
-  }
-}
+```bash
+claude mcp add --transport stdio jev-local \
+  --command /home/son_goku/jev-mcp/.venv/bin/python \
+  --args -m --args jev_mcp.server --args --transport --args stdio
+```
 ```
 
 ## 6+1 工具一览
@@ -115,7 +107,7 @@ pm2 logs jev-mcp
 ## 环境
 
 - `TYPESAFE_API_KEY` — desktop 上 `~/.jev/.env`，mode 0600
-- `JEV_MCP_TOKEN` — desktop + laptop 同步，在双方 `~/.claude/settings.json` env 段
+- `JEV_MCP_TOKEN` — desktop 端在 `~/.jev/token` (mode 0600)；laptop 端通过 `claude mcp add --header` 一次性传入（不再依赖 env 插值）
 - `JEV_LOG_FULL_RESPONSE` — 默认不设（privacy 模式，只 metadata）；设 `1` 启用 response 全量落盘
 - `JEV_BATCH_CONCURRENCY` — `batch_judge` worker 数，默认 `1`（串行）
 - `JEV_THRESHOLD_ACT` / `JEV_THRESHOLD_CONFIRM` — action gate 阈值，默认 **0.7 / 0.4**（prototype 偏保守）

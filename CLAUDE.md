@@ -81,7 +81,7 @@ laptop (Claude Code) ──Tailscale──► desktop (jev-mcp) ──HTTPS─�
 
 - **`TYPESAFE_API_KEY`** lives in `~/.claude/settings.json` env section on **desktop** (107 chars, prefix `apikey_28598c95...`). Persists across sessions — no manual export. Claude Code bash uses `--noprofile --norc`, so `~/.bashrc` env does NOT propagate.
 - **TYPESAFE_API_KEY on server**: lives at `~/.jev/.env` on desktop, mode 0600. Server reads it.
-- **Bearer token** (`JEV_MCP_TOKEN`): shared between desktop (server) and laptop (client). On both, lives in `~/.claude/settings.json` env section.
+- **Bearer token** (`JEV_MCP_TOKEN`): shared between desktop (server) and laptop (client). Server reads it from `~/.jev/token` (mode 0600). Client: stored in shell env or set via `claude mcp add` command (see Next steps).
 - **MCP version**: FastMCP 1.x. In mcp 2.x, `FastMCP` was renamed to `MCPServer` — must pin `mcp<2`.
 - **No typesafe-sdk dependency**: server uses `httpx` directly to POST `/v1/systemone` (per user design). This is a deviation from the v1 skeleton — Phase 2 rewrites `server.py`.
 - **Jev API request format** (verified — official docs + live calls):
@@ -136,7 +136,12 @@ Phase 2 implementation + integration tests all done in this session. Phase 3 req
    pm2 start ".venv/bin/python -m jev_mcp.server --transport http --host $(tailscale ip -4) --port 8765" --name jev-mcp
    pm2 save
    ```
-5. On laptop: `~/.claude/settings.json` add HTTP MCP server entry — **first verify** Claude Code supports `"Bearer ${env:JEV_MCP_TOKEN}"` interpolation in HTTP MCP headers
+5. On laptop: register MCP server via `claude mcp add` (writes to `~/.claude.json`, which Claude Code CLI **and** VSCode extension read at startup):
+   ```bash
+   claude mcp add --transport http jev http://100.86.140.31:8765/mcp \
+     --header "Authorization: Bearer $(cat ~/.jev/token)"
+   ```
+   **Important**: editing `~/.claude/settings.json`'s `mcpServers` field directly does **not** register MCP servers for VSCode extension sessions (bug discovered 2026-09-22: VSCode ext spawns Claude binary with `--mcp-config` flag from `~/.claude.json`, ignoring `settings.json.mcpServers`). After running `claude mcp add`, **reload VSCode window** (Command Palette → "Reload Window") for the tools to appear. Verify with `claude mcp list` before reloading.
 6. New Claude Code session: verify `mcp__jev__*` tools are callable via `health()` first
 7. Phase 3 measurement: run `batch_judge` on a real Chinese ticket sample (20 items), measure actual tokens, decide if 32k char cap needs lowering
 

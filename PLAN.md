@@ -211,30 +211,38 @@ pm2 save
 pm2 logs jev-mcp
 ```
 
-### Laptop 端（Claude Code settings.json）
+### Laptop 端（Claude Code — `claude mcp add`）
 
-```json
-{
-  "mcpServers": {
-    "jev": {
-      "type": "http",
-      "url": "http://<desktop-tailscale-ip>:8765/mcp",
-      "headers": { "Authorization": "Bearer ${env:JEV_MCP_TOKEN}" }
-    }
-  }
-}
+> **Update 2026-09-22**: editing `~/.claude/settings.json`'s `mcpServers` field does **not** register MCP servers for VSCode extension sessions. The canonical config is `~/.claude.json`, written via `claude mcp add`.
+
+```bash
+# 用 server 上的 token（同步方式：1Password / pass / scp / 手动复制）
+claude mcp add --transport http jev http://<desktop-tailscale-ip>:8765/mcp \
+  --header "Authorization: Bearer <paste-token-here>"
+
+# 验证
+claude mcp list   # 应看到 jev
 ```
 
-`JEV_MCP_TOKEN` 也要在 laptop 的 `~/.claude/settings.json` env 段配置（同步方式：1Password / pass / 手动复制）。
+然后**重启 Claude Code session / VSCode 窗口**（Command Palette → "Reload Window"）。`mcp__jev__*` 工具会在新 session 里出现。
 
-### 同机开发（desktop 直接跑 Claude Code）
+等同手动写 `~/.claude.json` 的 `mcpServers` 段——`claude mcp add` 就是这个的 CLI 包装。
 
+### 同机开发（同一台机直接跑 Claude Code）
+
+```bash
+claude mcp add --transport stdio jev-local \
+  --command /home/son_goku/jev-mcp/.venv/bin/python \
+  --args -m jev_mcp.server --args --transport --args stdio
+```
+
+等同在 `~/.claude.json` 加：
 ```json
 {
   "mcpServers": {
     "jev-local": {
       "command": "/home/son_goku/jev-mcp/.venv/bin/python",
-      "args": ["/home/son_goku/jev-mcp/src/server.py", "--transport", "stdio"]
+      "args": ["-m", "jev_mcp.server", "--transport", "stdio"]
     }
   }
 }
@@ -245,7 +253,7 @@ pm2 logs jev-mcp
 - [ ] Server 绑 Tailscale IP（`tailscale ip -4`），**不**绑 `0.0.0.0`
 - [ ] 不在路由器/防火墙开放 8765
 - [ ] Tailscale ACL（可选加强）：`{"src":["laptop-device"],"dst":["desktop-device:8765"]}`
-- [ ] Bearer token 在 env 里，laptop 端只读 env
+- [ ] Bearer token 在 server 上 (`~/.jev/token`)；laptop 用 `claude mcp add` 时通过 `--header` 传入
 - [ ] `~/.jev/.env` 权限 `0600`
 - [ ] 决策日志 `~/.local/share/jev-mcp/decisions.jsonl` 权限 `0600`
 - [ ] 启动后 `tailscale status` + `ss -tlnp | grep 8765` 确认监听地址正确
@@ -306,7 +314,7 @@ pm2 logs jev-mcp
 待 Phase 2 实现时处理（不在文档层）：
 
 - **pyproject 打包 bug**：`packages.find where=["src"]` + `entry point src.server:main` 矛盾，改标准 src layout（`src/jev_mcp/server.py`）
-- **README 里的 `Bearer ${env:JEV_MCP_TOKEN}` 插值语法**：Claude Code HTTP MCP header env 展开支持因版本而异，**Phase 3 前实测**；不行就 token 直接写 settings.json
+- **README 里的 `Bearer ${env:JEV_MCP_TOKEN}` 插值语法**：Claude Code HTTP MCP header env 展开支持因版本而异。**2026-09-22 实测发现更深的 bug**：VSCode extension 直接不读 `settings.json.mcpServers`，整个方案错位。改用 `claude mcp add --header "Authorization: Bearer ..."` 命令（直接 token 字面量，不依赖 env 插值）。
 - **PM2 token 持久化**：从 `export` 改成落盘 `~/.jev/token` (0600)，重启机器不丢
 - **启动 fail-fast**：`TYPESAFE_API_KEY` 缺失 + 日志目录 `mkdir -p`
 
