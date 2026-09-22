@@ -8,21 +8,23 @@
 
 **Core idea**: Claude Code's own "external System 1". Main model (System 2) does creative / reasoning / planning; Jev (System 1) handles high-frequency small decisions during the main model's reasoning loop — called as native MCP tools.
 
-## Current state (as of 2026-09-22, after Phase 2 + Windows 真机反馈 fix)
+## Current state (as of 2026-09-22, Phase 3 deployed)
 
 - ✓ `PLAN.md` — design proposal (v2 with HTTP transport, 4+1+1 tools, 7 server-side features including retry)
 - ✓ `docs/tools.md` — per-tool reference
 - ✓ `pyproject.toml` — Phase 2 fixed (deps: mcp<2, httpx, uvicorn, tenacity; standard `src/jev_mcp/` layout; entry point `jev_mcp.server:main`)
 - ✓ `.env.example`
-- ✓ `src/jev_mcp/` — Phase 2 implementation (action_gate, bearer, cache, budget, decision_log, jev_client, state_cap, server)
-- ✓ 126 tests passing (120 unit + 6 real-API integration, $0.00006 per integration run)
-- ✓ **Tool descriptions wired**: 6 tools each have POSITIVE/NEGATIVE/EXAMPLE descriptions (500-1000 chars), registered via `add_tool(name=, description=)` not docstrings (FastMCP quirk)
-- ✓ **Tool names match docs**: `classify`/`check`/`rate`/`batch_judge`/`system_one_raw`/`health` (was `classify_tool` etc.)
-- ✓ **Bearer token enforced**: `BearerTokenVerifier` via `FastMCP(token_verifier=, auth=AuthSettings(...))`. HTTP mode fail-fast if JEV_MCP_TOKEN missing (stdio doesn't need it)
-- ✓ `health()` does live API probe via GET /v1/models (free, verifies key)
+- ✓ `src/jev_mcp/` — implementation (action_gate, bearer, cache, budget, decision_log, jev_client, state_cap, server)
+- ✓ 142 tests passing (120 unit + 6 real-API integration + 16 regression: transport_security, proxy_bypass, description naming)
+- ✓ **Deployed**: systemd --user unit `jev-mcp.service` enabled + `Linger=yes` on `sgkstation` (Tailscale `100.86.140.31:8765`)
+- ✓ **Tool descriptions wired**: 6 tools each have POSITIVE/NEGATIVE/CONTRACT descriptions (500-1000 chars), registered via `add_tool(name=, description=)`
+- ✓ **Tool names match docs**: `classify`/`check`/`rate`/`batch_judge`/`system_one_raw`/`health`
+- ✓ **Bearer token enforced**: `BearerTokenVerifier` via FastMCP `token_verifier`; HTTP mode fail-fast without `JEV_MCP_TOKEN`
+- ✓ **transport_security**: Tailscale IP in `allowed_hosts` (default blocks 421)
+- ✓ **`trust_env=False`** in `JevClient` (bypass broken local HTTP proxy)
+- ✓ `health()` does live API probe via `GET /v1/models`
 - ✓ `classify` validates options count (2-255); `rate` validates levels (2-10)
-- ✓ `src/server.py` (v1 skeleton) removed
-- ✗ NOT installed / running on user's desktop yet (Phase 3)
+- ✓ Public on GitHub: https://github.com/Songokou1983/jev-mcp (3 commits, no secrets in tree)
 - ✓ User confirmed 7 design decisions (PLAN.md §拍板记录) — **thresholds use conservative 0.7/0.4**
 
 ## Architecture
