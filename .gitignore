@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Build artifacts
+*.egg-info/
+build/
+dist/
+*.egg
+
+# Test output
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Runtime logs (created by the server)
+decisions.jsonl
+
+# Local secrets (must never be committed)
+.env
+.jev/
+*.local
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*.swo
+Thumbs.db
