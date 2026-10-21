@@ -24,7 +24,7 @@ pytestmark = pytest.mark.skipif(not API_KEY, reason=SKIP_REASON)
 def deps(tmp_path):
     """Real-deps integration: real JevClient, fresh cache/budget/log per test."""
     return ServerDeps(
-        client=JevClient(api_key=API_KEY),
+        client=JevClient(api_key=API_KEY, proxy=os.environ.get("JEV_API_PROXY")),
         cache=LRUCache(capacity=100),
         budget=SessionBudget(limit_usd=0.01),  # tight cap to bound test cost
         decision_log=DecisionLog(path=str(tmp_path / "decisions.jsonl"), log_full_response=False),
