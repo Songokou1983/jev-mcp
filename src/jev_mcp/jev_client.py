@@ -52,12 +52,17 @@ class JevClient:
         model_version: str = PINNED_MODEL_VERSION,
         timeout: float = 30.0,
         max_retries: int = 3,
+        proxy: str | None = None,
     ):
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.model_version = model_version
         self.timeout = timeout
         self.max_retries = max_retries
+        # Explicit proxy (e.g. "http://127.0.0.1:7897"). Set via JEV_API_PROXY.
+        # None = direct connection. Env proxies are still ignored (trust_env=False)
+        # so the 2026-09-22 "broken local proxy" bug cannot come back by accident.
+        self.proxy = proxy or None
 
     def format_request(
         self,
@@ -90,7 +95,9 @@ class JevClient:
                 reraise=True,
             ):
                 with attempt:
-                    async with httpx.AsyncClient(timeout=self.timeout, trust_env=False) as client:
+                    async with httpx.AsyncClient(
+                        timeout=self.timeout, trust_env=False, proxy=self.proxy
+                    ) as client:
                         resp = await client.post(url, json=body, headers=headers)
                     if resp.status_code in (429, 529):
                         raise _RetryableStatus(resp.status_code)
@@ -111,7 +118,9 @@ class JevClient:
         url = f"{self.base_url}{MODELS_PATH}"
         headers = {"Authorization": f"Bearer {self.api_key}"}
         try:
-            async with httpx.AsyncClient(timeout=10.0, trust_env=False) as client:
+            async with httpx.AsyncClient(
+                timeout=10.0, trust_env=False, proxy=self.proxy
+            ) as client:
                 resp = await client.get(url, headers=headers)
             return 200 <= resp.status_code < 300
         except httpx.HTTPError:

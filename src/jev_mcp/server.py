@@ -543,7 +543,11 @@ def init(
     """Build ServerDeps + FastMCP instance. Called once at startup."""
     global _deps
     _deps = ServerDeps(
-        client=JevClient(api_key=api_key, model_version=model_version or PINNED_MODEL_VERSION),
+        client=JevClient(
+            api_key=api_key,
+            model_version=model_version or PINNED_MODEL_VERSION,
+            proxy=os.environ.get("JEV_API_PROXY"),
+        ),
         cache=LRUCache(capacity=cache_capacity or 1000),
         budget=SessionBudget(limit_usd=float(os.environ.get("JEV_SESSION_BUDGET_USD", session_budget_usd or 0.10))),
         decision_log=DecisionLog(
