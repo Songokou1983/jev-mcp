@@ -9,6 +9,7 @@ Per docs.typesafe.ai/api.md:
 """
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import httpx
@@ -86,12 +87,16 @@ class JevClient:
             "Content-Type": "application/json",
         }
 
-        # Tenacity wrapper around the single-attempt function
+        # Tenacity wrapper around the single-attempt function.
+        # Retries 429/529 AND transport errors (ConnectError/timeout) — the local
+        # proxy path fails intermittently (~2% of calls), so a single blip must
+        # not surface as a tool error.
         try:
             async for attempt in AsyncRetrying(
                 stop=stop_after_attempt(self.max_retries + 1),
                 wait=wait_exponential(multiplier=0.5, max=4.0),
-                retry=retry_if_exception_type(_RetryableStatus),
+                retry=retry_if_exception_type(_RetryableStatus)
+                | retry_if_exception_type(httpx.TransportError),
                 reraise=True,
             ):
                 with attempt:
@@ -107,6 +112,9 @@ class JevClient:
         except _RetryableStatus as e:
             # Retries exhausted on a retryable status → wrap as API error
             raise JevAPIError(e.status, f"retry exhausted: {e}")
+        except httpx.TransportError as e:
+            # Retries exhausted on a transport failure (proxy/network) → API error
+            raise JevAPIError(0, f"transport error after retries: {type(e).__name__}: {e}")
         # Unreachable; type checkers need it
         raise JevAPIError(0, "retry exhausted")
 
@@ -114,14 +122,22 @@ class JevClient:
         """Cheap connectivity + key validity check via GET /v1/models (no inference cost).
 
         Returns True if API responds 2xx; False on any error (auth, network, timeout).
+        Retries transport errors up to 3 times — a single transient proxy blip must
+        not report the API as unreachable.
         """
         url = f"{self.base_url}{MODELS_PATH}"
         headers = {"Authorization": f"Bearer {self.api_key}"}
-        try:
-            async with httpx.AsyncClient(
-                timeout=10.0, trust_env=False, proxy=self.proxy
-            ) as client:
-                resp = await client.get(url, headers=headers)
-            return 200 <= resp.status_code < 300
-        except httpx.HTTPError:
-            return False
+        for attempt in range(3):
+            try:
+                async with httpx.AsyncClient(
+                    timeout=10.0, trust_env=False, proxy=self.proxy
+                ) as client:
+                    resp = await client.get(url, headers=headers)
+                return 200 <= resp.status_code < 300
+            except httpx.TransportError:
+                if attempt == 2:
+                    return False
+                await asyncio.sleep(0.5 * (attempt + 1))
+            except httpx.HTTPError:
+                return False
+        return False
