@@ -36,3 +36,5 @@ decisions.jsonl
 *.swp
 *.swo
 Thumbs.db
+# Local backups (created before in-place edits, never committed)
+*.bak.*

@@ -21,7 +21,7 @@
 - ✓ **Tool names match docs**: `classify`/`check`/`rate`/`batch_judge`/`system_one_raw`/`health`
 - ✓ **Bearer token enforced**: `BearerTokenVerifier` via FastMCP `token_verifier`; HTTP mode fail-fast without `JEV_MCP_TOKEN`
 - ✓ **transport_security**: Tailscale IP in `allowed_hosts` (default blocks 421)
-- ✓ **`trust_env=False`** in `JevClient` (bypass broken local HTTP proxy)
+- ✓ **`trust_env=False`** in `JevClient` (bypass broken local HTTP proxy). **不设 `JEV_API_PROXY` = 直连**；直连被区域封锁（451）时设 `JEV_API_PROXY=http://127.0.0.1:7897`（2026-10-21 起本机必须设）
 - ✓ `health()` does live API probe via `GET /v1/models`
 - ✓ `classify` validates options count (2-255); `rate` validates levels (2-10)
 - ✓ Public on GitHub: https://github.com/Songokou1983/jev-mcp (3 commits, no secrets in tree)

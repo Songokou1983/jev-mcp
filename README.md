@@ -48,9 +48,29 @@
 | 4 | Key 管理 | `TYPESAFE_API_KEY` from `~/.jev/.env` 或 env | hardcode |
 | 5 | 决策日志 | `~/.local/share/jev-mcp/decisions.jsonl` mode 0600，**隐私默认**（metadata only） | `JEV_LOG_FULL_RESPONSE=1` opt-in 落 response body |
 | 6 | 模型版本 | `jev-1.13.0` hardcoded，client 不可覆盖 | hardcode |
-| 7 | 重试 | 429/529 指数退避（tenacity，max 3，base 0.5s，max 4s） | hardcode |
+| 7 | 重试 | 429/529 **+ transport error** 指数退避（tenacity，max 3，base 0.5s，max 4s） | hardcode |
 
-**`httpx` 用 `trust_env=False` 直连 api.typesafe.ai，绕过 env proxy** — 修复了 local HTTP proxy 间歇 TLS 失败的 bug（详见 "已知坑"）。
+**`httpx` 用 `trust_env=False`**，即**不认** `HTTP_PROXY`/`HTTPS_PROXY` 等 env 变量（修复 local HTTP proxy 间歇 TLS 失败的 bug，见 "已知坑"）。需要走代理时用**显式**的 `JEV_API_PROXY`（如 `http://127.0.0.1:7897`）—— 2026-10-21 起本机直连 api.typesafe.ai 会收到 451 区域封锁。
+
+> ### ⚠️ 必须设置 `JEV_API_PROXY`
+>
+> 从 2026-10-21 起，**从本机直连 `api.typesafe.ai` 会返回 HTTP 451**
+> `{"title":"Typesafe is not available in your region."}` —— 出口 IP 被区域封锁。
+> **不设 `JEV_API_PROXY` = 直连 = 全部工具调用失败、`health()` 的 `api_reachable` 恒为 `false`。**
+>
+> `JEV_API_PROXY` 是 **jev-mcp 自己的变量**。标准的 `HTTPS_PROXY` / `HTTP_PROXY`
+> **在这里不生效** —— `JevClient` 用 `httpx trust_env=False` 建 client（2026-09-22
+> 的修复：绕开当时间歇 TLS 失败的本地代理），env proxy 永远不会被采纳。
+> 代理必须显式传进去。
+>
+> 部署时（systemd drop-in）：
+>
+> ```ini
+> [Service]
+> Environment=JEV_API_PROXY=http://127.0.0.1:7897
+> ```
+>
+> 前提：本地有一个可用的 HTTP 代理（本机 = Clash mixed port `127.0.0.1:7897`）。
 
 ## Server 部署
 
@@ -90,6 +110,18 @@ EOF
 
 systemctl --user daemon-reload
 systemctl --user enable --now jev-mcp
+
+# 3b. 代理（必需 —— 直连会被区域封锁 451；见上面「必须设置 JEV_API_PROXY」）
+mkdir -p ~/.config/systemd/user/jev-mcp.service.d
+cat > ~/.config/systemd/user/jev-mcp.service.d/proxy.conf <<'EOF'
+[Service]
+Environment=JEV_API_PROXY=http://127.0.0.1:7897
+Environment=HTTPS_PROXY=http://127.0.0.1:7897
+Environment=HTTP_PROXY=http://127.0.0.1:7897
+Environment=NO_PROXY=127.0.0.1,localhost,::1,100.64.0.0/10,*.tail4e6642.ts.net
+EOF
+systemctl --user daemon-reload
+systemctl --user restart jev-mcp
 
 # 4. boot 持久化（要 sudo）
 sudo loginctl enable-linger $USER
@@ -151,13 +183,14 @@ claude mcp add --transport stdio jev-local \
 | `JEV_LOG_FULL_RESPONSE` | (unset) | 设 `1` 启用 response body 落盘 |
 | `JEV_BATCH_CONCURRENCY` | `1` | batch_judge 并发 worker 数（1=串行） |
 | `JEV_BYPASS_CACHE` | (unset) | `1` = 跳过缓存（Phase 3 一致性监控用） |
+| `JEV_API_PROXY` | (unset) | **本项目自定义变量**（不是标准 `HTTPS_PROXY`）。显式代理，如 `http://127.0.0.1:7897`。**不设 = 直连；直连已被区域封锁（451），本机必须设** |
 
 ## 安全清单
 
 - [x] Server bind Tailscale IP（`tailscale ip -4`），**不** `0.0.0.0`
 - [x] HTTP bearer auth（无 token 401）
 - [x] FastMCP `transport_security` 白名单 Tailscale IP（修"Invalid Host header"→ 421）
-- [x] `httpx trust_env=False` 直连（绕过 broken local HTTP proxy）
+- [x] `httpx trust_env=False`（不认 env proxy）；要走代理用显式 `JEV_API_PROXY`
 - [x] systemd `Linger=yes`（boot 持久化）
 - [x] `~/.jev/.env` mode 0600，`decisions.jsonl` mode 0600
 - [x] Decision log 默认 metadata only（`JEV_LOG_FULL_RESPONSE=1` opt-in）
@@ -178,6 +211,7 @@ claude mcp add --transport stdio jev-local \
 | FastMCP 默认 `transport_security` 只允许 `127.0.0.1`/`localhost`，Tailscale IP 被拒 → 421 | `create_mcp()` 默认白名单 `127.0.0.1` + `localhost` + 当前 server 的 Tailscale IP |
 | VSCode extension 不读 `~/.claude/settings.json.mcpServers`（用 `--mcp-config` flag 从 `~/.claude.json`） | 用 `claude mcp add`，**不**改 settings.json |
 | `httpx trust_env=True` 默认 → local proxy (`127.0.0.1:7897`) 间歇 TLS 失败 → `ConnectError`，`str()==''` 看着像 server bug | `JevClient.send/probe` 都用 `trust_env=False` |
+| 2026-10-21：直连 api.typesafe.ai 返回 **451** "Typesafe is not available in your region"（区域封锁，出口 IP 变了） | 显式 `JEV_API_PROXY=http://127.0.0.1:7897`；同时 `send/probe` 对 transport error 做重试（该代理路径约 2% 概率瞬时 `ConnectError`） |
 | `batch_judge` cap 50 → 20：50×300ms ≈ 15s+ 触发 MCP client timeout | cap 20（≈6s 串行），`JEV_BATCH_CONCURRENCY` 可调 |
 | Noul 无 API confidence | server 用 `effective_confidence = \|noul-0.5\|\*2`（Noul 比 Choice 偏保守 by design） |
 | `cache_hit_rate` 测错东西（衡量输入重复度，不是一致性） | Phase 3 一致性监控：`JEV_BYPASS_CACHE=1` + 金标输入集重放 |
